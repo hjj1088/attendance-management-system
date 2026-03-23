@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>考勤管理系统</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/dexie@3/dist/dexie.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+tailwind.config={theme:{extend:{fontFamily:{sans:['Noto Sans SC','sans-serif'],mono:['JetBrains Mono','monospace']},colors:{navy:{50:'#f0f4f8',100:'#d9e2ec',200:'#bcccdc',300:'#9fb3c8',400:'#829ab1',500:'#627d98',600:'#486581',700:'#334e68',800:'#243b53',900:'#102a43',950:'#0a1929'},accent:{50:'#e6fcf5',100:'#c3fae8',200:'#96f2d7',300:'#63e6be',400:'#38d9a9',500:'#20c997',600:'#12b886',700:'#0ca678',800:'#099268',900:'#087f5b'}}}}}
+</script>
+<style>
+/* == SECTION: BASE STYLES == */
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--sidebar-w:240px;--header-h:56px}
+body{font-family:'Noto Sans SC',sans-serif;background:#f0f2f5;color:#1a2332;overflow:hidden;height:100vh}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:#bcccdc;border-radius:3px}
+::-webkit-scrollbar-track{background:transparent}
+#loginPage{display:flex;align-items:center;justify-content:center;height:100vh;background:linear-gradient(135deg,#102a43 0%,#243b53 50%,#334e68 100%);position:relative;overflow:hidden}
+#loginPage::before{content:'';position:absolute;inset:0;background:url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h60v60H0z' fill='none'/%3E%3Cpath d='M30 0v60M0 30h60' stroke='%23ffffff08' stroke-width='1'/%3E%3C/svg%3E")}
+.login-card{background:rgba(255,255,255,0.03);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:48px 40px;width:400px;position:relative;z-index:1}
+.login-card h1{font-size:24px;font-weight:700;color:#fff;margin-bottom:6px;letter-spacing:-.5px}
+.login-card p{color:#9fb3c8;font-size:13px;margin-bottom:32px}
+.login-input{width:100%;padding:12px 16px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;font-size:14px;outline:none;transition:.2s}
+.login-input:focus{border-color:#20c997;box-shadow:0 0 0 3px rgba(32,201,151,.15)}
+.login-input::placeholder{color:#627d98}
+.login-btn{width:100%;padding:12px;background:linear-gradient(135deg,#20c997,#12b886);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s;margin-top:8px}
+.login-btn:hover{transform:translateY(-1px);box-shadow:0 4px 16px rgba(32,201,151,.3)}
+.login-hint{color:#627d98;font-size:12px;text-align:center;margin-top:16px}
+
+/* == SECTION: APP SHELL == */
+#appShell{display:none;height:100vh}
+.sidebar{position:fixed;left:0;top:0;width:var(--sidebar-w);height:100vh;background:#102a43;display:flex;flex-direction:column;z-index:40}
+.sidebar-logo{padding:16px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.06)}
+.sidebar-logo svg{width:28px;height:28px;color:#20c997}
+.sidebar-logo span{font-size:15px;font-weight:700;color:#fff;letter-spacing:-.3px}
+.sidebar-nav{flex:1;padding:12px 8px;overflow-y:auto}
+.nav-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;color:#9fb3c8;font-size:13.5px;font-weight:500;cursor:pointer;transition:.15s;margin-bottom:2px}
+.nav-item:hover{background:rgba(255,255,255,.05);color:#d9e2ec}
+.nav-item.active{background:rgba(32,201,151,.12);color:#38d9a9}
+.nav-item svg{width:18px;height:18px;flex-shrink:0}
+.sidebar-footer{padding:12px 16px;border-top:1px solid rgba(255,255,255,.06)}
+.sidebar-user{display:flex;align-items:center;gap:10px;color:#9fb3c8;font-size:12px}
+.sidebar-user .avatar{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#20c997,#0ca678);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px}
+.main-area{margin-left:var(--sidebar-w);height:100vh;overflow-y:auto;overflow-x:hidden;position:relative;width:calc(100vw - var(--sidebar-w))}
+.page-header{padding:20px 28px 0;margin-bottom:20px;width:100%}
+.page-header h2{font-size:20px;font-weight:700;color:#102a43;letter-spacing:-.3px}
+.page-header p{font-size:13px;color:#627d98;margin-top:2px}
+.page-content{padding:0 28px 28px;flex:1;width:100%;display:flex;flex-direction:column}
+.page{display:none;width:100%}
+.page.active{display:flex;flex-direction:column;min-height:100vh;width:100%}
+#page-calendar .page-content{padding-bottom:12px}
+#page-calendar .cal-grid{flex:1;min-height:0}
+
+/* == SECTION: COMPONENTS == */
+.card{background:#fff;border-radius:12px;border:1px solid #e8ecf1;padding:20px;transition:.2s}
+.card:hover{box-shadow:0 2px 12px rgba(0,0,0,.04)}
+.stat-card{text-align:center;padding:24px 16px}
+.stat-card .stat-num{font-size:32px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#102a43;line-height:1}
+.stat-card .stat-label{font-size:12px;color:#627d98;margin-top:6px}
+.stat-card .stat-icon{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+.badge{display:inline-flex;align-items:center;padding:2px 10px;border-radius:20px;font-size:12px;font-weight:500}
+.badge-green{background:#e6fcf5;color:#087f5b}
+.badge-yellow{background:#fff9db;color:#e67700}
+.badge-red{background:#ffe3e3;color:#c92a2a}
+.badge-blue{background:#d0ebff;color:#1864ab}
+.badge-gray{background:#f1f3f5;color:#495057}
+.badge-purple{background:#f3d9fa;color:#862e9c}
+.btn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:500;border:none;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:6px}
+.btn-primary{background:#20c997;color:#fff}.btn-primary:hover{background:#12b886}
+.btn-outline{background:transparent;border:1px solid #d9e2ec;color:#486581}.btn-outline:hover{background:#f0f4f8}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-danger{background:#e03131;color:#fff}.btn-danger:hover{background:#c92a2a}
+.data-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.data-table thead th{background:#f8f9fa;padding:10px 12px;text-align:left;font-weight:600;color:#486581;border-bottom:2px solid #e8ecf1;position:sticky;top:0;z-index:1}
+.data-table tbody td{padding:10px 12px;border-bottom:1px solid #f1f3f5;color:#334e68}
+.data-table tbody tr:hover{background:#f8fffe}
+.data-table tbody tr{cursor:pointer;transition:.1s}
+
+/* == SECTION: UPLOAD == */
+.upload-zone{border:2px dashed #bcccdc;border-radius:12px;padding:48px 24px;text-align:center;cursor:pointer;transition:.2s;background:#fafbfc}
+.upload-zone:hover,.upload-zone.drag-over{border-color:#20c997;background:#e6fcf5}
+.upload-zone svg{width:40px;height:40px;color:#829ab1;margin:0 auto 12px}
+.upload-zone p{color:#627d98;font-size:14px}
+.upload-zone .hint{font-size:12px;color:#9fb3c8;margin-top:4px}
+
+/* == SECTION: CALENDAR - auto-size layout == */
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);grid-template-rows:auto;gap:4px}
+.cal-header{padding:6px;text-align:center;font-size:13px;font-weight:600;color:#627d98}
+.cal-day{background:#fff;border:1px solid #f1f3f5;border-radius:8px;padding:6px;cursor:pointer;transition:.15s;position:relative;overflow:hidden}
+.cal-day:hover{border-color:#20c997;box-shadow:0 2px 8px rgba(32,201,151,.1)}
+.cal-day .day-num{font-size:14px;font-weight:600;font-family:'JetBrains Mono',monospace;color:#486581}
+.cal-day.today .day-num{background:#20c997;color:#fff;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:13px}
+.cal-day.other-month{opacity:.35}
+.cal-day.rest-day{background:#fafbfc}
+.cal-day.holiday{background:#fff5f5}
+.cal-dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin:1px}
+.cal-day .day-badges{display:flex;flex-wrap:wrap;gap:2px;margin-top:6px}
+.cal-day .day-badge{font-size:10px;padding:1px 5px;border-radius:4px;white-space:nowrap}
+
+/* == SECTION: MODAL == */
+.modal-overlay{position:fixed;inset:0;background:rgba(10,25,41,.5);backdrop-filter:blur(4px);z-index:100;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal{background:#fff;border-radius:14px;width:640px;max-height:80vh;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.2);animation:modalIn .2s ease}
+@keyframes modalIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid #f1f3f5}
+.modal-header h3{font-size:16px;font-weight:700;color:#102a43}
+.modal-close{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:8px;border:none;background:transparent;cursor:pointer;color:#829ab1;transition:.15s}
+.modal-close:hover{background:#f1f3f5;color:#334e68}
+.modal-body{padding:24px;overflow-y:auto;max-height:calc(80vh - 130px)}
+.modal-footer{padding:16px 24px;border-top:1px solid #f1f3f5;display:flex;justify-content:flex-end;gap:8px}
+
+/* == SECTION: FILTER BAR == */
+.filter-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.filter-bar select,.filter-bar input{padding:7px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px;background:#fff;color:#334e68;outline:none}
+.filter-bar select:focus,.filter-bar input:focus{border-color:#20c997}
+
+/* == SECTION: TOAST == */
+.toast-container{position:fixed;top:20px;right:20px;z-index:200;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 20px;border-radius:10px;font-size:13px;font-weight:500;color:#fff;animation:toastIn .3s ease;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+.toast-success{background:#12b886}
+.toast-error{background:#e03131}
+.toast-info{background:#1c7ed6}
+@keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+
+/* == SECTION: FILE TYPE CARDS == */
+.file-type-card{border:1px solid #e8ecf1;border-radius:10px;padding:16px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:.15s;background:#fff}
+.file-type-card:hover{border-color:#20c997;background:#f8fffe}
+.file-type-card.selected{border-color:#20c997;background:#e6fcf5}
+.file-type-icon{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.file-type-info h4{font-size:14px;font-weight:600;color:#243b53}
+.file-type-info p{font-size:12px;color:#829ab1;margin-top:2px}
+
+/* == SECTION: TEMPLATE CARD == */
+.template-card{border:1px solid #e8ecf1;border-radius:10px;padding:16px;background:#fff;transition:.15s}
+.template-card:hover{box-shadow:0 2px 12px rgba(0,0,0,.05)}
+.tab-bar{display:flex;gap:2px;background:#f1f3f5;border-radius:10px;padding:3px;margin-bottom:20px;width:fit-content}
+.tab-item{padding:7px 18px;border-radius:8px;font-size:13px;font-weight:500;color:#627d98;cursor:pointer;transition:.15s}
+.tab-item.active{background:#fff;color:#102a43;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.empty-state{text-align:center;padding:60px 24px;color:#829ab1}
+.empty-state svg{width:64px;height:64px;margin:0 auto 16px;opacity:.4}
+.empty-state p{font-size:14px}
+.empty-state .hint{font-size:12px;margin-top:4px}
+
+/* == SECTION: LOADING SPINNER == */
+.spinner{width:36px;height:36px;border:3px solid #e8ecf1;border-top-color:#20c997;border-radius:50%;animation:spin .6s linear infinite;margin:0 auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-overlay{display:none;position:fixed;inset:0;background:rgba(255,255,255,0.7);z-index:90;align-items:center;justify-content:center}
+.loading-overlay.show{display:flex}
+
+/* == SECTION: PERSON NAV (Change #8) == */
+.person-nav{display:flex;align-items:center;gap:12px;padding:8px 0}
+.person-nav .btn{min-width:80px;justify-content:center}
+.person-indicator{font-size:13px;color:#486581;font-weight:500;min-width:100px;text-align:center}
+
+/* == SECTION: EXCEL PREVIEW TABLE (Change #5) == */
+.excel-preview{border-collapse:collapse;font-size:12px;width:100%}
+.excel-preview th,.excel-preview td{border:1px solid #c5d0dc;padding:6px 10px;text-align:center}
+.excel-preview th{background:#dfe6ed;color:#334e68;font-weight:600}
+.excel-preview td{background:#fff;color:#627d98;font-family:'JetBrains Mono',monospace;font-size:11px}
+
+/* == SECTION: HOLIDAY MANAGEMENT (Change #2) == */
+.holiday-tag{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;font-size:12px;background:#fff3bf;color:#e67700;border:1px solid #ffd43b;margin:2px}
+.holiday-tag .remove-holiday{cursor:pointer;font-size:14px;color:#e67700;margin-left:4px}
+.holiday-tag .remove-holiday:hover{color:#c92a2a}
+</style>
+</head>
+<body>
+
+<!-- LOGIN PAGE -->
+<div id="loginPage">
+  <div class="login-card">
+    <div style="text-align:center;margin-bottom:24px">
+      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#20c997" stroke-width="1.5" style="margin:0 auto"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14l2 2 4-4"/></svg>
+    </div>
+    <h1 style="text-align:center">考勤管理系统</h1>
+    <p style="text-align:center">企业考勤数据处理平台</p>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <input class="login-input" id="loginUser" placeholder="用户名" value="admin">
+      <input class="login-input" id="loginPass" type="password" placeholder="密码" value="admin">
+      <button class="login-btn" id="loginBtn">登 录</button>
+    </div>
+    <div class="login-hint">默认管理员 admin / admin</div>
+  </div>
+</div>
+
+<!-- APP SHELL -->
+<div id="appShell">
+  <!-- SIDEBAR - Change #6: added 考勤设置 nav item -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14l2 2 4-4"/></svg>
+      <span>考勤管理系统</span>
+    </div>
+    <nav class="sidebar-nav" id="sidebarNav">
+      <div class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        数据总览
+      </div>
+      <div class="nav-item" data-page="import">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        数据导入
+      </div>
+      <div class="nav-item" data-page="list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        考勤明细
+      </div>
+      <div class="nav-item" data-page="calendar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        日历视图
+      </div>
+      <div class="nav-item" data-page="export">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        导出中心
+      </div>
+      <div class="nav-item" data-page="attendance-settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        考勤设置
+      </div>
+      <div class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        系统设置
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="sidebar-user">
+        <div class="avatar" id="userAvatar">管</div>
+        <div>
+          <div style="color:#d9e2ec;font-size:13px;font-weight:500" id="userName">管理员</div>
+          <div style="color:#627d98;font-size:11px;cursor:pointer" id="logoutBtn">退出登录</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main-area">
+    <!-- DASHBOARD PAGE -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header"><h2>数据总览</h2><p>考勤数据概览与统计</p></div>
+      <div class="page-content">
+        <div class="grid grid-cols-4 gap-4 mb-6" id="dashStats"></div>
+        <div class="grid grid-cols-2 gap-4">
+          <div class="card"><h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">最近导入记录</h4><div id="dashImportList" class="text-sm text-gray-500">暂无数据</div></div>
+          <div class="card"><h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">考勤异常汇总</h4><div id="dashAnomalyList" class="text-sm text-gray-500">暂无数据</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- IMPORT PAGE -->
+    <div class="page" id="page-import">
+      <div class="page-header"><h2>数据导入</h2><p>导入打卡机数据和OA补充数据</p></div>
+      <div class="page-content">
+        <div class="mb-5">
+          <p style="font-size:13px;font-weight:600;color:#486581;margin-bottom:10px">选择文件类型</p>
+          <div class="grid grid-cols-5 gap-3" id="fileTypeCards"></div>
+        </div>
+        <div class="upload-zone" id="uploadZone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>点击或拖拽文件到此区域上传</p>
+          <div class="hint">请先选择文件类型，支持 .xlsx / .xls 格式（自动识别文件名中的关键字）</div>
+          <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" multiple>
+        </div>
+        <div class="mt-6">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:12px">导入历史</h4>
+          <div id="importHistory" class="text-sm text-gray-400">暂无导入记录</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LIST PAGE - Change #4: better columns -->
+    <div class="page" id="page-list">
+      <div class="page-header"><h2>考勤明细</h2><p>查看所有员工的完整考勤记录</p></div>
+      <div class="page-content">
+        <div class="filter-bar" id="listFilters"></div>
+        <div class="card" style="padding:0;overflow:hidden" id="listTableCard">
+          <div style="overflow-x:auto;max-height:calc(100vh - 240px)">
+            <table class="data-table" id="attendanceTable">
+              <thead><tr id="tableHead"></tr></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="empty-state" id="listEmpty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <p>暂无考勤数据</p>
+          <div class="hint">请先在"数据导入"页面导入考勤文件</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CALENDAR PAGE - Change #1: full page, no card wrapper; Change #8: person nav -->
+    <div class="page" id="page-calendar">
+      <div class="page-header"><h2>日历视图</h2><p>按日历查看考勤状态</p></div>
+      <div class="page-content">
+        <div class="filter-bar" id="calFilters"></div>
+        <!-- Person navigation (Change #8) -->
+        <div class="person-nav" id="personNav" style="display:none">
+          <button class="btn btn-outline btn-sm" id="prevPerson">&#8249; 上一人</button>
+          <span class="person-indicator" id="personIndicator"></span>
+          <button class="btn btn-outline btn-sm" id="nextPerson">下一人 &#8250;</button>
+        </div>
+        <!-- Month nav - no card wrapper (Change #1) -->
+        <div class="flex items-center justify-between mb-4" style="padding:0 4px">
+          <button class="btn btn-outline btn-sm" id="calPrev">&#8249; 上月</button>
+          <span style="font-size:16px;font-weight:700;color:#243b53" id="calTitle">2026年3月</span>
+          <button class="btn btn-outline btn-sm" id="calNext">下月 &#8250;</button>
+        </div>
+        <div class="cal-grid" id="calGrid"></div>
+        <div class="flex gap-4 mt-4" style="font-size:12px;color:#627d98;padding:0 4px">
+          <span><span class="cal-dot" style="background:#12b886"></span> 正常</span>
+          <span><span class="cal-dot" style="background:#f59f00"></span> 异常</span>
+          <span><span class="cal-dot" style="background:#e03131"></span> 缺勤/旷工</span>
+          <span><span class="cal-dot" style="background:#1c7ed6"></span> 请假/出差</span>
+          <span><span class="cal-dot" style="background:#ae3ec9"></span> 加班</span>
+          <span><span class="cal-dot" style="background:#868e96"></span> 休息</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXPORT PAGE - Change #5: template preview -->
+    <div class="page" id="page-export">
+      <div class="page-header"><h2>导出中心</h2><p>使用模板导出考勤数据</p></div>
+      <div class="page-content">
+        <div class="tab-bar">
+          <div class="tab-item active" data-tab="templates">模板管理</div>
+          <div class="tab-item" data-tab="doexport">数据导出</div>
+        </div>
+        <div id="tab-templates">
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div class="upload-zone" id="templateUploadZone" style="padding:32px 20px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block;width:32px;height:32px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/></svg>
+              <p style="font-size:13px">上传导出模板</p>
+              <div class="hint">Excel模板中使用 {{字段名}} 作为占位符</div>
+              <input type="file" id="templateInput" accept=".xlsx,.xls" style="display:none">
+            </div>
+            <div class="card" style="font-size:13px">
+              <h4 style="font-weight:600;color:#243b53;margin-bottom:10px">可用占位符</h4>
+              <div style="display:flex;flex-wrap:wrap;gap:6px" id="placeholderList"></div>
+            </div>
+          </div>
+          <!-- Change #5: Sample template preview -->
+          <div class="card mb-4">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <h4 style="font-size:14px;font-weight:600;color:#243b53">模板预览示例</h4>
+              <button class="btn btn-outline btn-sm" id="downloadSampleBtn">下载示例模板</button>
+            </div>
+            <div style="overflow-x:auto;border:1px solid #d9e2ec;border-radius:8px">
+              <table class="excel-preview">
+                <thead>
+                  <tr><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th><th>G</th></tr>
+                </thead>
+                <tbody>
+                  <tr style="background:#e8ecf1"><td style="font-weight:600;font-family:'Noto Sans SC'">姓名</td><td style="font-weight:600;font-family:'Noto Sans SC'">部门</td><td style="font-weight:600;font-family:'Noto Sans SC'">日期</td><td style="font-weight:600;font-family:'Noto Sans SC'">签到时间</td><td style="font-weight:600;font-family:'Noto Sans SC'">签退时间</td><td style="font-weight:600;font-family:'Noto Sans SC'">请假时长</td><td style="font-weight:600;font-family:'Noto Sans SC'">出差类型</td></tr>
+                  <tr><td>{{姓名}}</td><td>{{部门}}</td><td>{{日期}}</td><td>{{签到时间}}</td><td>{{签退时间}}</td><td>{{请假时长}}</td><td>{{出差类型}}</td></tr>
+                  <tr style="color:#9fb3c8"><td>张三</td><td>研发部</td><td>2026-03-01</td><td>08:28</td><td>17:35</td><td></td><td></td></tr>
+                  <tr style="color:#9fb3c8"><td>李四</td><td>市场部</td><td>2026-03-01</td><td>08:45</td><td>17:30</td><td>4</td><td></td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div style="font-size:11px;color:#9fb3c8;margin-top:8px">第1行为表头，第2行使用 {{占位符}} 标记字段，导出时系统会自动填充实际数据</div>
+          </div>
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:12px">已保存模板</h4>
+          <div id="templateList" class="grid grid-cols-3 gap-3">
+            <div class="text-sm text-gray-400">暂无模板</div>
+          </div>
+        </div>
+        <div id="tab-doexport" style="display:none">
+          <div class="card">
+            <div class="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label style="font-size:13px;font-weight:500;color:#486581;display:block;margin-bottom:6px">选择模板</label>
+                <select id="exportTemplateSelect" style="width:100%;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+                  <option value="">-- 请选择导出模板 --</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:13px;font-weight:500;color:#486581;display:block;margin-bottom:6px">导出范围</label>
+                <div style="display:flex;gap:8px">
+                  <input type="month" id="exportMonth" style="flex:1;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <select id="exportDeptFilter" style="padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px"><option value="">全部部门</option></select>
+              <button class="btn btn-primary" id="doExportBtn">导出 Excel</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ATTENDANCE SETTINGS PAGE - Change #6: split from system settings -->
+    <div class="page" id="page-attendance-settings">
+      <div class="page-header"><h2>考勤设置</h2><p>考勤时间规则与假日管理</p></div>
+      <div class="page-content">
+        <div class="card mb-4">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">考勤时间规则</h4>
+          <div class="grid grid-cols-2 gap-4">
+            <div><label style="font-size:13px;color:#486581;display:block;margin-bottom:4px">上班时间</label><input type="time" id="setWorkStart" value="08:30" style="width:100%;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px"></div>
+            <div><label style="font-size:13px;color:#486581;display:block;margin-bottom:4px">下班时间</label><input type="time" id="setWorkEnd" value="17:30" style="width:100%;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px"></div>
+            <div><label style="font-size:13px;color:#486581;display:block;margin-bottom:4px">每日应打卡次数</label><input type="number" id="setPunchCount" value="2" min="1" max="10" style="width:100%;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px"></div>
+            <div><label style="font-size:13px;color:#486581;display:block;margin-bottom:4px">迟到容忍时间（分钟）</label><input type="number" id="setLateTolerance" value="0" min="0" style="width:100%;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px"></div>
+          </div>
+          <button class="btn btn-primary mt-4" id="saveSettingsBtn">保存设置</button>
+        </div>
+
+        <!-- Change #2: Holiday/Rest day management -->
+        <div class="card mb-4">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">公司假日/休息日管理</h4>
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <label style="font-size:13px;color:#486581;display:block;margin-bottom:4px">添加单个日期</label>
+              <div style="display:flex;gap:8px">
+                <input type="date" id="holidayDate" style="flex:1;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+                <select id="holidayType" style="padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+                  <option value="休息">休息</option>
+                  <option value="调休">调休</option>
+                  <option value="节假日">节假日</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:13px;color:#486581;display:block;margin-bottom:4px">说明（可选）</label>
+              <div style="display:flex;gap:8px">
+                <input type="text" id="holidayDesc" placeholder="如：春节、国庆等" style="flex:1;padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+                <button class="btn btn-primary btn-sm" id="addHolidayBtn">添加</button>
+              </div>
+            </div>
+          </div>
+          <div class="mb-4">
+            <label style="font-size:13px;color:#486581;display:block;margin-bottom:4px">添加日期范围</label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="date" id="holidayRangeStart" style="padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+              <span style="color:#829ab1">至</span>
+              <input type="date" id="holidayRangeEnd" style="padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+              <select id="holidayRangeType" style="padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px">
+                <option value="休息">休息</option>
+                <option value="调休">调休</option>
+                <option value="节假日">节假日</option>
+              </select>
+              <input type="text" id="holidayRangeDesc" placeholder="说明" style="padding:8px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px;width:120px">
+              <button class="btn btn-primary btn-sm" id="addHolidayRangeBtn">批量添加</button>
+            </div>
+          </div>
+          <div id="holidayList" style="display:flex;flex-wrap:wrap;gap:4px;min-height:32px;padding:8px;background:#fafbfc;border-radius:8px;border:1px solid #f1f3f5">
+            <span style="color:#9fb3c8;font-size:12px">暂无假日数据</span>
+          </div>
+        </div>
+
+        <!-- Import shift calendar from Excel -->
+        <div class="card">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">导入班次/假日日历</h4>
+          <p style="font-size:12px;color:#829ab1;margin-bottom:12px">Excel格式：列 日期、类型（休息/调休/节假日）、说明</p>
+          <div class="upload-zone" id="holidayUploadZone" style="padding:24px 16px">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="display:block;width:28px;height:28px"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <p style="font-size:13px">点击上传假日日历Excel</p>
+            <div class="hint">支持 .xlsx / .xls 格式</div>
+            <input type="file" id="holidayFileInput" accept=".xlsx,.xls" style="display:none">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SYSTEM SETTINGS PAGE - Change #6: data management + placeholders -->
+    <div class="page" id="page-settings">
+      <div class="page-header"><h2>系统设置</h2><p>系统配置与数据管理</p></div>
+      <div class="page-content">
+        <div class="card mb-4">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">数据管理</h4>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline" id="clearDataBtn" style="color:#e03131;border-color:#ffc9c9">清空所有数据</button>
+            <button class="btn btn-outline" id="rebuildBtn">重新合并数据</button>
+          </div>
+        </div>
+        <div class="card mb-4" style="opacity:0.6">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">数据库路径配置 <span class="badge badge-gray">即将推出</span></h4>
+          <p style="font-size:13px;color:#829ab1">自定义IndexedDB数据存储路径，支持数据备份与恢复。</p>
+        </div>
+        <div class="card mb-4" style="opacity:0.6">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">SQL数据源连接 <span class="badge badge-gray">即将推出</span></h4>
+          <p style="font-size:13px;color:#829ab1">支持连接外部SQL数据库（MySQL/PostgreSQL），直接读取考勤数据。</p>
+        </div>
+        <div class="card" style="opacity:0.6">
+          <h4 style="font-size:14px;font-weight:600;color:#243b53;margin-bottom:16px">权限管理 (RBAC) <span class="badge badge-gray">即将推出</span></h4>
+          <p style="font-size:13px;color:#829ab1">角色与权限管理，支持多用户、多部门访问控制。</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- DETAIL MODAL -->
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="modalTitle">考勤详情</h3>
+      <button class="modal-close" onclick="closeModal()">&#10005;</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- LOADING OVERLAY -->
+<div id="loadingOverlay" class="loading-overlay">
+  <div style="text-align:center">
+    <div class="spinner"></div>
+    <div style="margin-top:12px;font-size:14px;color:#486581" id="loadingText">加载中...</div>
+  </div>
+</div>
+
+<script>
+// ============================================
+// DATABASE SCHEMA (v2 with holidays table)
+// ============================================
+const db = new Dexie('AttendanceDB');
+db.version(1).stores({
+  users: '++id, username',
+  punchRaw: '++id, name, department, datetime, importBatch',
+  attendanceDetail: '++id, name, date, department, [name+date], importBatch',
+  leaveApps: '++id, applicant, department, startDate, endDate, importBatch',
+  overtimeApps: '++id, applicant, department, importBatch',
+  tripApps: '++id, applicant, department, importBatch',
+  mergedRecords: '++id, name, date, department, status, [name+date]',
+  importHistory: '++id, type, filename, count, time',
+  exportTemplates: '++id, name, data, createdAt',
+  settings: 'key'
+});
+db.version(2).stores({
+  users: '++id, username',
+  punchRaw: '++id, name, department, datetime, importBatch',
+  attendanceDetail: '++id, name, date, department, [name+date], importBatch',
+  leaveApps: '++id, applicant, department, startDate, endDate, importBatch',
+  overtimeApps: '++id, applicant, department, importBatch',
+  tripApps: '++id, applicant, department, importBatch',
+  mergedRecords: '++id, name, date, department, status, [name+date]',
+  importHistory: '++id, type, filename, count, time',
+  exportTemplates: '++id, name, data, createdAt',
+  settings: 'key',
+  holidays: '++id, date, type, description'
+});
+
+// ============================================
+// GLOBALS
+// ============================================
+let currentUser = null;
+let selectedFileType = null;
+let calYear = new Date().getFullYear(), calMonth = new Date().getMonth() + 1;
+let calPersonList = [];
+let calPersonIndex = -1; // -1 means "all"
+let cachedHolidayDates = null; // Map<dateStr, {type, description}>
+
+async function getLatestDataMonth() {
+  const records = await db.mergedRecords.toArray();
+  if (!records.length) return null;
+  let latest = '';
+  for (const r of records) {
+    if (r.date && r.date > latest) latest = r.date;
+  }
+  if (!latest) return null;
+  const parts = latest.split('-');
+  return { year: parseInt(parts[0]), month: parseInt(parts[1]), ym: parts[0] + '-' + parts[1] };
+}
+
+const FILE_TYPES = [
+  { id: 'punch_simple', name: '打卡精简版', icon: '\u23F1', color: '#e6fcf5', border: '#20c997', keyword: '精简' },
+  { id: 'punch_detail', name: '打卡详细版', icon: '\uD83D\uDCCA', color: '#d0ebff', border: '#1c7ed6', keyword: '详细' },
+  { id: 'leave', name: '请假申请单', icon: '\uD83C\uDFD6', color: '#fff9db', border: '#f59f00', keyword: '请假' },
+  { id: 'overtime', name: '加班申请单', icon: '\uD83D\uDD27', color: '#ffe8cc', border: '#e8590c', keyword: '加班' },
+  { id: 'trip', name: '出差申请单', icon: '\u2708', color: '#f3d9fa', border: '#ae3ec9', keyword: '出差' }
+];
+const PLACEHOLDERS = [
+  '姓名','部门','日期','考勤号码','签到时间','签退时间','应到','实到',
+  '迟到时间','早退时间','是否旷工','工作时间','加班时间','出勤时间',
+  '请假类型','请假时长','请假事由','加班内容','加班时长',
+  '出差目的地','出差类型','出差事由','状态','备注',
+  '上午打卡','下午打卡'
+];
+
+// ============================================
+// TOAST
+// ============================================
+function toast(msg, type='success') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2500);
+}
+
+// ============================================
+// LOADING OVERLAY
+// ============================================
+function showLoading(text) {
+  const el = document.getElementById('loadingOverlay');
+  document.getElementById('loadingText').textContent = text || '加载中...';
+  el.classList.add('show');
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.remove('show');
+}
+
+// ============================================
+// HOLIDAY CACHE
+// ============================================
+async function loadHolidayCache() {
+  const all = await db.holidays.toArray();
+  cachedHolidayDates = new Map();
+  all.forEach(h => cachedHolidayDates.set(h.date, { type: h.type, description: h.description }));
+  return cachedHolidayDates;
+}
+
+function isRestDay(dateStr) {
+  if (cachedHolidayDates && cachedHolidayDates.has(dateStr)) {
+    const h = cachedHolidayDates.get(dateStr);
+    return h.type === '休息' || h.type === '调休' || h.type === '节假日';
+  }
+  // Fallback: if no holidays configured at all, use weekends
+  if (!cachedHolidayDates || cachedHolidayDates.size === 0) {
+    const dow = new Date(dateStr).getDay();
+    return dow === 0 || dow === 6;
+  }
+  return false;
+}
+
+// ============================================
+// AUTH
+// ============================================
+async function initAuth() {
+  const count = await db.users.count();
+  if (count === 0) {
+    await db.users.add({ username: 'admin', password: 'admin', role: '超级管理员', name: '管理员', department: '全部' });
+  }
+}
+
+async function doLogin() {
+  const u = document.getElementById('loginUser').value.trim();
+  const p = document.getElementById('loginPass').value.trim();
+  if (!u || !p) return toast('请输入用户名和密码', 'error');
+  const user = await db.users.where('username').equals(u).first();
+  if (!user || user.password !== p) return toast('用户名或密码错误', 'error');
+  currentUser = user;
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('appShell').style.display = 'flex';
+  document.getElementById('userName').textContent = user.name;
+  document.getElementById('userAvatar').textContent = user.name[0];
+  await loadHolidayCache();
+  loadDashboard();
+}
+
+function doLogout() {
+  currentUser = null;
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+}
+
+// ============================================
+// NAVIGATION
+// ============================================
+function navigateTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pageEl = document.getElementById('page-' + page);
+  if (pageEl) pageEl.classList.add('active');
+  const navEl = document.querySelector('.nav-item[data-page="' + page + '"]');
+  if (navEl) navEl.classList.add('active');
+  if (page === 'dashboard') loadDashboard();
+  if (page === 'list') { showLoading('加载考勤明细...'); setTimeout(() => loadListView().then(hideLoading), 50); }
+  if (page === 'calendar') { showLoading('加载日历...'); setTimeout(() => loadCalendar().then(hideLoading), 50); }
+  if (page === 'import') renderImportPage();
+  if (page === 'export') loadExportPage();
+  if (page === 'attendance-settings') loadAttendanceSettingsPage();
+  if (page === 'settings') {} // static page
+}
+
+// ============================================
+// MODAL
+// ============================================
+function openModal(title, html) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('detailModal').classList.add('show');
+}
+function closeModal() {
+  document.getElementById('detailModal').classList.remove('show');
+}
+
+// ============================================
+// DASHBOARD
+// ============================================
+async function loadDashboard() {
+  const merged = await db.mergedRecords.count();
+  const employees = merged > 0 ? (await db.mergedRecords.orderBy('name').uniqueKeys()).length : 0;
+  const anomalies = await db.mergedRecords.where('status').anyOf(['迟到','早退','旷工','漏打卡','异常']).count();
+  const normalCount = await db.mergedRecords.where('status').equals('正常').count();
+  const rate = merged > 0 ? Math.round(normalCount / merged * 100) : 0;
+
+  document.getElementById('dashStats').innerHTML = [
+    { num: employees, label: '员工人数', bg: '#e6fcf5', ic: '#20c997', svg: '<circle cx="12" cy="7" r="4"/><path d="M5.5 21a7.5 7.5 0 0115 0"/>' },
+    { num: merged, label: '考勤记录', bg: '#d0ebff', ic: '#1c7ed6', svg: '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>' },
+    { num: rate + '%', label: '正常出勤率', bg: '#e6fcf5', ic: '#12b886', svg: '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>' },
+    { num: anomalies, label: '异常记录', bg: '#fff3bf', ic: '#f59f00', svg: '<path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>' }
+  ].map(s => `<div class="card stat-card"><div class="stat-icon" style="background:${s.bg}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${s.ic}" stroke-width="1.5">${s.svg}</svg></div><div class="stat-num">${s.num}</div><div class="stat-label">${s.label}</div></div>`).join('');
+
+  const history = await db.importHistory.reverse().limit(5).toArray();
+  document.getElementById('dashImportList').innerHTML = history.length
+    ? history.map(h => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f3f5;font-size:12px"><span style="color:#334e68">${h.filename}</span><span style="color:#829ab1">${h.count}条 \u00B7 ${new Date(h.time).toLocaleString('zh-CN')}</span></div>`).join('')
+    : '<div class="text-sm text-gray-400">暂无数据</div>';
+
+  const anoms = await db.mergedRecords.where('status').anyOf(['迟到','早退','旷工','漏打卡','异常']).limit(8).toArray();
+  document.getElementById('dashAnomalyList').innerHTML = anoms.length
+    ? anoms.map(a => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f3f5;font-size:12px"><span style="color:#334e68">${a.name} - ${a.date}</span><span class="badge ${a.status==='旷工'?'badge-red':a.status==='迟到'||a.status==='早退'?'badge-yellow':'badge-gray'}">${a.status}</span></div>`).join('')
+    : '<div class="text-sm text-gray-400">暂无异常</div>';
+}
+
+// ============================================
+// IMPORT PAGE + AUTO-DETECT (Change #7)
+// ============================================
+function detectFileType(filename) {
+  const name = filename.toLowerCase();
+  if (name.includes('精简')) return 'punch_simple';
+  if (name.includes('详细')) return 'punch_detail';
+  if (name.includes('请假')) return 'leave';
+  if (name.includes('加班')) return 'overtime';
+  if (name.includes('出差')) return 'trip';
+  return null;
+}
+
+function renderImportPage() {
+  document.getElementById('fileTypeCards').innerHTML = FILE_TYPES.map(ft =>
+    `<div class="file-type-card ${selectedFileType===ft.id?'selected':''}" data-type="${ft.id}">
+      <div class="file-type-icon" style="background:${ft.color};border:1px solid ${ft.border}">${ft.icon}</div>
+      <div class="file-type-info"><h4>${ft.name}</h4><p>点击选择</p></div>
+    </div>`
+  ).join('');
+  document.querySelectorAll('.file-type-card').forEach(c => {
+    c.onclick = () => {
+      selectedFileType = c.dataset.type;
+      renderImportPage();
+    };
+  });
+  loadImportHistory();
+}
+
+async function loadImportHistory() {
+  const history = await db.importHistory.reverse().limit(10).toArray();
+  const el = document.getElementById('importHistory');
+  if (!history.length) { el.innerHTML = '<div class="text-gray-400">暂无导入记录</div>'; return; }
+  const typeNames = { punch_simple:'打卡精简版', punch_detail:'打卡详细版', leave:'请假申请单', overtime:'加班申请单', trip:'出差申请单' };
+  el.innerHTML = `<table class="data-table"><thead><tr><th>文件名</th><th>类型</th><th>记录数</th><th>导入时间</th></tr></thead><tbody>${
+    history.map(h => `<tr><td>${h.filename}</td><td><span class="badge badge-blue">${typeNames[h.type]||h.type}</span></td><td style="font-family:'JetBrains Mono'">${h.count}</td><td style="color:#829ab1">${new Date(h.time).toLocaleString('zh-CN')}</td></tr>`).join('')
+  }</tbody></table>`;
+}
+
+// ============================================
+// FILE PARSING & IMPORT
+// ============================================
+async function handleFileUpload(file) {
+  // Change #7: auto-detect file type from filename
+  const detected = detectFileType(file.name);
+  if (detected && !selectedFileType) {
+    selectedFileType = detected;
+    renderImportPage();
+    toast('已自动识别文件类型: ' + FILE_TYPES.find(f=>f.id===detected).name, 'info');
+  } else if (detected && selectedFileType !== detected) {
+    selectedFileType = detected;
+    renderImportPage();
+    toast('已根据文件名自动切换类型: ' + FILE_TYPES.find(f=>f.id===detected).name, 'info');
+  }
+
+  if (!selectedFileType) { toast('请先选择文件类型', 'error'); return; }
+  showLoading('正在导入 ' + file.name + ' ...');
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    if (rows.length < 2) { hideLoading(); toast('文件内容为空', 'error'); return; }
+    const headers = rows[0].map(h => String(h || '').trim());
+    const dataRows = rows.slice(1).filter(r => r.some(c => c != null && c !== ''));
+    const batch = Date.now();
+    let count = 0;
+
+    if (selectedFileType === 'punch_simple') {
+      count = await importPunchSimple(headers, dataRows, batch);
+    } else if (selectedFileType === 'punch_detail') {
+      count = await importPunchDetail(headers, dataRows, batch);
+    } else if (selectedFileType === 'leave') {
+      count = await importLeave(headers, dataRows, batch);
+    } else if (selectedFileType === 'overtime') {
+      count = await importOvertime(headers, dataRows, batch);
+    } else if (selectedFileType === 'trip') {
+      count = await importTrip(headers, dataRows, batch);
+    }
+    await db.importHistory.add({ type: selectedFileType, filename: file.name, count, time: batch });
+    toast('成功导入 ' + count + ' 条记录');
+    // Change #3: merge ONCE after import
+    await mergeAllData();
+    loadImportHistory();
+  } catch (e) {
+    console.error(e);
+    toast('导入失败: ' + e.message, 'error');
+  }
+  hideLoading();
+}
+
+function findCol(headers, ...names) {
+  for (const n of names) {
+    const i = headers.indexOf(n);
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+function parseExcelDate(val) {
+  if (!val) return '';
+  if (val instanceof Date) return val.toISOString().slice(0, 10);
+  const s = String(val).trim();
+  const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2,'0') + '-' + m[3].padStart(2,'0');
+  if (/^\d+(\.\d+)?$/.test(s)) {
+    const d = new Date((parseFloat(s) - 25569) * 86400 * 1000);
+    if (!isNaN(d)) return d.toISOString().slice(0, 10);
+  }
+  return s;
+}
+
+function parseExcelDateTime(val) {
+  if (!val) return { date: '', time: '' };
+  if (val instanceof Date) return { date: val.toISOString().slice(0,10), time: val.toTimeString().slice(0,8) };
+  const s = String(val).trim();
+  const m = s.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\s+(\d{1,2}:\d{2}(:\d{2})?)/);
+  if (m) return { date: m[1] + '-' + m[2].padStart(2,'0') + '-' + m[3].padStart(2,'0'), time: m[4] };
+  if (/^\d+\.\d+$/.test(s)) {
+    const d = new Date((parseFloat(s) - 25569) * 86400 * 1000);
+    if (!isNaN(d)) return { date: d.toISOString().slice(0,10), time: d.toTimeString().slice(0,8) };
+  }
+  return { date: s, time: '' };
+}
+
+async function importPunchSimple(headers, rows, batch) {
+  const iDept = findCol(headers, '部门');
+  const iName = findCol(headers, '姓名');
+  const iNum = findCol(headers, '考勤号码');
+  const iDt = findCol(headers, '日期时间');
+  const iStatus = findCol(headers, '记录状态');
+  const iMachine = findCol(headers, '机器号');
+  const iCode = findCol(headers, '编号');
+  const iMethod = findCol(headers, '比对方式');
+  const records = rows.map(r => {
+    const { date, time } = parseExcelDateTime(r[iDt]);
+    return { department: r[iDept]||'', name: r[iName]||'', attendanceNum: r[iNum]||'', date, time, datetime: r[iDt]||'', recordStatus: r[iStatus]||'', machineNum: r[iMachine]||'', code: r[iCode]||'', method: r[iMethod]||'', importBatch: batch };
+  }).filter(r => r.name);
+  await db.punchRaw.bulkAdd(records);
+  return records.length;
+}
+
+async function importPunchDetail(headers, rows, batch) {
+  const colMap = {};
+  ['序号','考勤号码','自定义编号','姓名','日期','对应时段','上班时间','下班时间','签到时间','签退时间','应到','实到','迟到时间','早退时间','是否旷工','加班时间','工作时间','例外情况','部门','平日','周末','节假日','出勤时间','平日加班','周末加班','节假日加班'].forEach(n => {
+    colMap[n] = findCol(headers, n);
+  });
+  const records = rows.map(r => ({
+    attendanceNum: r[colMap['考勤号码']]||'', customNum: r[colMap['自定义编号']]||'',
+    name: r[colMap['姓名']]||'', date: parseExcelDate(r[colMap['日期']]),
+    shift: r[colMap['对应时段']]||'', workStart: r[colMap['上班时间']]||'',
+    workEnd: r[colMap['下班时间']]||'', signIn: r[colMap['签到时间']]||'',
+    signOut: r[colMap['签退时间']]||'', shouldAttend: r[colMap['应到']]||'',
+    actualAttend: r[colMap['实到']]||'', lateTime: r[colMap['迟到时间']]||'',
+    earlyLeave: r[colMap['早退时间']]||'', isAbsent: r[colMap['是否旷工']]||false,
+    overtimeHours: r[colMap['加班时间']]||'', workHours: r[colMap['工作时间']]||'',
+    exception: r[colMap['例外情况']]||'', department: r[colMap['部门']]||'',
+    weekday: r[colMap['平日']]||'', weekend: r[colMap['周末']]||'',
+    holiday: r[colMap['节假日']]||'', attendanceHours: r[colMap['出勤时间']]||'',
+    weekdayOT: r[colMap['平日加班']]||'', weekendOT: r[colMap['周末加班']]||'',
+    holidayOT: r[colMap['节假日加班']]||'', importBatch: batch
+  })).filter(r => r.name);
+  await db.attendanceDetail.bulkAdd(records);
+  return records.length;
+}
+
+async function importLeave(headers, rows, batch) {
+  const records = rows.map(r => {
+    const iApp = findCol(headers, '申请人');
+    const iDept = findCol(headers, '申请部门');
+    const iType = findCol(headers, '请假类型');
+    const iStart = findCol(headers, '开始日期');
+    const iEnd = findCol(headers, '结束日期');
+    const iDays = findCol(headers, '请假天数');
+    const iHours = findCol(headers, '小时');
+    const iReason = findCol(headers, '请假事由');
+    const iStatus = findCol(headers, '状态');
+    return {
+      applicant: r[iApp]||'', department: r[iDept]||'', leaveType: r[iType]||'',
+      startDate: parseExcelDate(r[iStart]), endDate: parseExcelDate(r[iEnd]),
+      days: r[iDays]||0, hours: r[iHours]||0, reason: r[iReason]||'',
+      status: r[iStatus]||'', importBatch: batch
+    };
+  }).filter(r => r.applicant);
+  await db.leaveApps.bulkAdd(records);
+  return records.length;
+}
+
+async function importOvertime(headers, rows, batch) {
+  const records = rows.map(r => {
+    const iApp = findCol(headers, '申请人');
+    const iDept = findCol(headers, '申请部门');
+    const iRange = findCol(headers, '加班起止时间');
+    const iHours = findCol(headers, '小时');
+    const iContent = findCol(headers, '加班内容');
+    const iStatus = findCol(headers, '状态');
+    const rangeStr = String(r[iRange] || '');
+    let startDate = '', endDate = '', startTime = '', endTime = '';
+    const rm = rangeStr.match(/(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+    if (rm) { startDate = rm[1]; startTime = rm[2]; endDate = rm[3]; endTime = rm[4]; }
+    return {
+      applicant: r[iApp]||'', department: r[iDept]||'', rangeStr,
+      startDate, endDate, startTime, endTime,
+      hours: r[iHours]||0, content: r[iContent]||'', status: r[iStatus]||'',
+      importBatch: batch
+    };
+  }).filter(r => r.applicant);
+  await db.overtimeApps.bulkAdd(records);
+  return records.length;
+}
+
+async function importTrip(headers, rows, batch) {
+  const records = rows.map(r => {
+    const iApp = findCol(headers, '申请人');
+    const iDept = findCol(headers, '申请部门');
+    const iDest = findCol(headers, '目的地');
+    const iTrav = findCol(headers, '出差人员');
+    const iRange = findCol(headers, '出差起止日期');
+    const iType = findCol(headers, '出差类型');
+    const iReason = findCol(headers, '出差事由');
+    const iStatus = findCol(headers, '状态');
+    const rangeStr = String(r[iRange] || '');
+    let startDate = '', endDate = '';
+    const rm = rangeStr.match(/(\d{4}-\d{2}-\d{2})\s*-\s*(\d{4}-\d{2}-\d{2})/);
+    if (rm) { startDate = rm[1]; endDate = rm[2]; }
+    return {
+      applicant: r[iApp]||'', department: r[iDept]||'', destination: r[iDest]||'',
+      travelers: r[iTrav]||'', startDate, endDate, rangeStr,
+      tripType: r[iType]||'', reason: r[iReason]||'', status: r[iStatus]||'',
+      importBatch: batch
+    };
+  }).filter(r => r.applicant);
+  await db.tripApps.bulkAdd(records);
+  return records.length;
+}
+
+// Holiday Excel import
+async function importHolidayExcel(file) {
+  showLoading('导入假日日历...');
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+    if (rows.length < 2) { hideLoading(); toast('文件内容为空', 'error'); return; }
+    const headers = rows[0].map(h => String(h || '').trim());
+    const iDate = findCol(headers, '日期');
+    const iType = findCol(headers, '类型');
+    const iDesc = findCol(headers, '说明', '描述');
+    if (iDate < 0) { hideLoading(); toast('未找到"日期"列', 'error'); return; }
+    const dataRows = rows.slice(1).filter(r => r.some(c => c != null && c !== ''));
+    let count = 0;
+    for (const r of dataRows) {
+      const dateVal = parseExcelDate(r[iDate]);
+      if (!dateVal) continue;
+      const typeVal = iType >= 0 ? String(r[iType]||'休息').trim() : '休息';
+      const descVal = iDesc >= 0 ? String(r[iDesc]||'').trim() : '';
+      // Upsert: remove existing for this date, then add
+      await db.holidays.where('date').equals(dateVal).delete();
+      await db.holidays.add({ date: dateVal, type: typeVal, description: descVal });
+      count++;
+    }
+    await loadHolidayCache();
+    toast('成功导入 ' + count + ' 个假日/休息日');
+    loadHolidayList();
+  } catch (e) {
+    console.error(e);
+    toast('导入失败: ' + e.message, 'error');
+  }
+  hideLoading();
+}
+
+// ============================================
+// DATA MERGING (Change #2: use holidays table, Change #3: called once after import)
+// ============================================
+async function mergeAllData() {
+  await db.mergedRecords.clear();
+  // Ensure holiday cache is loaded
+  if (!cachedHolidayDates) await loadHolidayCache();
+
+  const details = await db.attendanceDetail.toArray();
+  const punches = await db.punchRaw.toArray();
+  const leaves = await db.leaveApps.toArray();
+  const overtimes = await db.overtimeApps.toArray();
+  const trips = await db.tripApps.toArray();
+
+  const map = new Map();
+  function getOrCreate(name, date, dept) {
+    const k = name + '|' + date;
+    if (!map.has(k)) {
+      map.set(k, {
+        name, date, department: dept || '',
+        signIn: '', signOut: '', shouldAttend: '', actualAttend: '',
+        lateTime: '', earlyLeave: '', isAbsent: false,
+        workHours: '', overtimeHours: '', attendanceHours: '',
+        leaveType: '', leaveHours: '', leaveReason: '',
+        otHours: '', otContent: '',
+        tripDest: '', tripType: '', tripReason: '',
+        rawPunches: [], status: '', remark: '',
+        amPunch: '', pmPunch: ''
+      });
+    }
+    return map.get(k);
+  }
+
+  // 1. Fill from detailed punch data
+  for (const d of details) {
+    if (!d.name || !d.date) continue;
+    const rec = getOrCreate(d.name, d.date, d.department);
+    rec.signIn = d.signIn || rec.signIn;
+    rec.signOut = d.signOut || rec.signOut;
+    rec.shouldAttend = d.shouldAttend;
+    rec.actualAttend = d.actualAttend;
+    rec.lateTime = d.lateTime;
+    rec.earlyLeave = d.earlyLeave;
+    rec.isAbsent = d.isAbsent === true || d.isAbsent === 'True' || d.isAbsent === 'true';
+    rec.workHours = d.workHours;
+    rec.overtimeHours = d.overtimeHours;
+    rec.attendanceHours = d.attendanceHours;
+    rec.department = d.department || rec.department;
+  }
+
+  // 2. Fill raw punches
+  for (const p of punches) {
+    if (!p.name || !p.date) continue;
+    const rec = getOrCreate(p.name, p.date, p.department);
+    rec.rawPunches.push(p.time || p.datetime);
+    rec.department = p.department || rec.department;
+  }
+
+  // 3. Fill leave data - expand date ranges
+  for (const lv of leaves) {
+    if (!lv.applicant || !lv.startDate) continue;
+    const start = new Date(lv.startDate);
+    const end = lv.endDate ? new Date(lv.endDate) : start;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().slice(0, 10);
+      const rec = getOrCreate(lv.applicant, dateStr, lv.department);
+      rec.leaveType = lv.leaveType || rec.leaveType;
+      rec.leaveHours = lv.hours || rec.leaveHours;
+      rec.leaveReason = lv.reason || rec.leaveReason;
+      rec.department = lv.department || rec.department;
+    }
+  }
+
+  // 4. Fill overtime data
+  for (const ot of overtimes) {
+    if (!ot.applicant || !ot.startDate) continue;
+    const rec = getOrCreate(ot.applicant, ot.startDate, ot.department);
+    rec.otHours = ot.hours || rec.otHours;
+    rec.otContent = ot.content || rec.otContent;
+    rec.department = ot.department || rec.department;
+  }
+
+  // 5. Fill trip data - expand date ranges
+  for (const tr of trips) {
+    if (!tr.applicant && !tr.travelers) continue;
+    const names = tr.travelers ? tr.travelers.split(/[,\uFF0C\u3001]/).map(n => n.trim()).filter(Boolean) : [tr.applicant];
+    const start = tr.startDate ? new Date(tr.startDate) : null;
+    const end = tr.endDate ? new Date(tr.endDate) : start;
+    if (!start) continue;
+    for (const nm of names) {
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().slice(0, 10);
+        const rec = getOrCreate(nm, dateStr, tr.department);
+        rec.tripDest = tr.destination || rec.tripDest;
+        rec.tripType = tr.tripType || rec.tripType;
+        rec.tripReason = tr.reason || rec.tripReason;
+        rec.department = tr.department || rec.department;
+      }
+    }
+  }
+
+  // 6. Determine AM/PM punches and status
+  for (const [, rec] of map) {
+    // Parse raw punches into AM/PM (Change #4)
+    if (rec.rawPunches.length > 0) {
+      const times = rec.rawPunches.map(t => {
+        const s = String(t).trim();
+        const tm = s.match(/(\d{1,2}):(\d{2})/);
+        return tm ? { h: parseInt(tm[1]), m: parseInt(tm[2]), raw: s } : null;
+      }).filter(Boolean).sort((a,b) => a.h*60+a.m - (b.h*60+b.m));
+      const am = times.filter(t => t.h < 12);
+      const pm = times.filter(t => t.h >= 12);
+      if (am.length > 0) rec.amPunch = am[0].raw;
+      if (pm.length > 0) rec.pmPunch = pm[pm.length - 1].raw;
+      // Also fill signIn/signOut from raw if not already set
+      if (!rec.signIn && am.length > 0) rec.signIn = am[0].raw;
+      if (!rec.signOut && pm.length > 0) rec.signOut = pm[pm.length - 1].raw;
+    }
+
+    // Also parse signIn/signOut as AM/PM if rawPunches empty
+    if (!rec.amPunch && rec.signIn) {
+      const tm = String(rec.signIn).match(/(\d{1,2}):/);
+      if (tm && parseInt(tm[1]) < 12) rec.amPunch = rec.signIn;
+    }
+    if (!rec.pmPunch && rec.signOut) {
+      const tm = String(rec.signOut).match(/(\d{1,2}):/);
+      if (tm && parseInt(tm[1]) >= 12) rec.pmPunch = rec.signOut;
+    }
+
+    // Determine status using holidays table (Change #2)
+    if (rec.tripDest) {
+      rec.status = '出差';
+    } else if (rec.leaveType) {
+      rec.status = '请假';
+      rec.remark = rec.leaveType;
+    } else if (rec.isAbsent && !rec.signIn && !rec.signOut) {
+      rec.status = isRestDay(rec.date) ? '休息' : '旷工';
+    } else if (rec.lateTime && rec.lateTime !== '0' && rec.lateTime !== '') {
+      rec.status = '迟到';
+    } else if (rec.earlyLeave && rec.earlyLeave !== '0' && rec.earlyLeave !== '') {
+      rec.status = '早退';
+    } else if (rec.signIn && rec.signOut) {
+      rec.status = '正常';
+    } else if (rec.signIn || rec.signOut) {
+      rec.status = '漏打卡';
+    } else {
+      rec.status = isRestDay(rec.date) ? '休息' : '异常';
+    }
+
+    if (rec.otHours) {
+      rec.remark = (rec.remark ? rec.remark + '\uFF0C' : '') + '加班' + rec.otHours + 'h';
+    }
+    rec.rawPunches = rec.rawPunches.join('; ');
+  }
+
+  const records = Array.from(map.values());
+  if (records.length > 0) {
+    await db.mergedRecords.bulkAdd(records);
+  }
+  toast('数据合并完成，共 ' + records.length + ' 条记录');
+}
+
+async function loadSettings() {
+  const s = {};
+  const all = await db.settings.toArray();
+  all.forEach(r => s[r.key] = r.value);
+  return {
+    workStart: s.workStart || '08:30',
+    workEnd: s.workEnd || '17:30',
+    punchCount: parseInt(s.punchCount) || 2,
+    lateTolerance: parseInt(s.lateTolerance) || 0
+  };
+}
+
+// ============================================
+// LIST VIEW (Change #4: AM/PM punch columns)
+// ============================================
+async function loadListView() {
+  const records = await db.mergedRecords.toArray();
+  const depts = [...new Set(records.map(r => r.department).filter(Boolean))].sort();
+  const names = [...new Set(records.map(r => r.name).filter(Boolean))].sort();
+
+  const latestData = await getLatestDataMonth();
+  const nowDate = new Date();
+  const defaultMonth = latestData ? latestData.ym : (nowDate.getFullYear() + '-' + String(nowDate.getMonth()+1).padStart(2,'0'));
+
+  document.getElementById('listFilters').innerHTML =
+    '<select id="fDept"><option value="">全部部门</option>' + depts.map(d=>'<option>'+d+'</option>').join('') + '</select>' +
+    '<select id="fName"><option value="">全部人员</option>' + names.map(n=>'<option>'+n+'</option>').join('') + '</select>' +
+    '<div style="display:flex;align-items:center;gap:4px"><button class="btn btn-outline btn-sm" id="fMonthPrev" style="padding:5px 8px">&#8249;</button><input type="month" id="fMonth" value="' + defaultMonth + '" style="padding:7px 12px;border:1px solid #d9e2ec;border-radius:8px;font-size:13px;background:#fff;color:#334e68"><button class="btn btn-outline btn-sm" id="fMonthNext" style="padding:5px 8px">&#8250;</button></div>' +
+    '<select id="fStatus"><option value="">全部状态</option><option>正常</option><option>迟到</option><option>早退</option><option>旷工</option><option>请假</option><option>出差</option><option>漏打卡</option><option>异常</option><option>休息</option></select>' +
+    '<button class="btn btn-primary btn-sm" id="filterBtn">筛选</button>' +
+    '<button class="btn btn-outline btn-sm" id="resetFilterBtn">重置</button>';
+
+  // Month arrow navigation
+  document.getElementById('fMonthPrev').onclick = () => {
+    const el = document.getElementById('fMonth');
+    const [y,m] = el.value.split('-').map(Number);
+    const nm = m === 1 ? 12 : m - 1;
+    const ny = m === 1 ? y - 1 : y;
+    el.value = ny + '-' + String(nm).padStart(2,'0');
+    renderTable(records);
+  };
+  document.getElementById('fMonthNext').onclick = () => {
+    const el = document.getElementById('fMonth');
+    const [y,m] = el.value.split('-').map(Number);
+    const nm = m === 12 ? 1 : m + 1;
+    const ny = m === 12 ? y + 1 : y;
+    el.value = ny + '-' + String(nm).padStart(2,'0');
+    renderTable(records);
+  };
+
+  document.getElementById('filterBtn').onclick = () => renderTable(records);
+  document.getElementById('resetFilterBtn').onclick = () => {
+    document.getElementById('fDept').value = '';
+    document.getElementById('fName').value = '';
+    document.getElementById('fMonth').value = defaultMonth;
+    document.getElementById('fStatus').value = '';
+    renderTable(records);
+  };
+  renderTable(records);
+}
+
+function renderTable(allRecords) {
+  const dept = document.getElementById('fDept')?.value || '';
+  const name = document.getElementById('fName')?.value || '';
+  const monthVal = document.getElementById('fMonth')?.value || '';
+  const status = document.getElementById('fStatus')?.value || '';
+
+  let filtered = allRecords || [];
+  if (dept) filtered = filtered.filter(r => r.department === dept);
+  if (name) filtered = filtered.filter(r => r.name === name);
+  if (monthVal) filtered = filtered.filter(r => r.date && r.date.startsWith(monthVal));
+  if (status) filtered = filtered.filter(r => r.status === status);
+  filtered.sort((a, b) => (a.department||'').localeCompare(b.department||'') || a.name.localeCompare(b.name) || a.date.localeCompare(b.date));
+
+  const listEmpty = document.getElementById('listEmpty');
+  const tableCard = document.getElementById('listTableCard');
+
+  if (filtered.length === 0) {
+    listEmpty.style.display = 'block';
+    tableCard.style.display = 'none';
+    return;
+  }
+  listEmpty.style.display = 'none';
+  tableCard.style.display = 'block';
+
+  document.getElementById('tableHead').innerHTML =
+    '<th>部门</th><th>姓名</th><th>日期</th><th>上午打卡</th><th>下午打卡</th><th>签到</th><th>签退</th><th>状态</th><th>迟到</th><th>早退</th><th>请假</th><th>出差</th><th>备注</th>';
+
+  const statusBadge = s => {
+    const m = { '正常':'badge-green','迟到':'badge-yellow','早退':'badge-yellow','旷工':'badge-red','请假':'badge-blue','出差':'badge-blue','漏打卡':'badge-yellow','异常':'badge-red','休息':'badge-gray' };
+    return '<span class="badge ' + (m[s]||'badge-gray') + '">' + s + '</span>';
+  };
+
+  // Determine display status: if no data at all and not rest/leave/trip, mark as 异常
+  document.getElementById('tableBody').innerHTML = filtered.map(r => {
+    const am = r.amPunch || '-';
+    const pm = r.pmPunch || '-';
+    const displayStatus = (!r.signIn && !r.signOut && !r.amPunch && !r.pmPunch && r.status !== '休息' && r.status !== '请假' && r.status !== '出差') ? '异常' : r.status;
+    return '<tr onclick="showRecordDetail(\'' + r.name + "','" + r.date + '\')">' +
+      '<td style="color:#627d98;font-size:12px">' + r.department + '</td>' +
+      '<td style="font-weight:500">' + r.name + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\';font-size:12px">' + r.date + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\';font-size:12px;color:' + (am==='-'?'#ccc':'#334e68') + '">' + am + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\';font-size:12px;color:' + (pm==='-'?'#ccc':'#334e68') + '">' + pm + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\';font-size:12px">' + (r.signIn||'-') + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\';font-size:12px">' + (r.signOut||'-') + '</td>' +
+      '<td>' + statusBadge(displayStatus) + '</td>' +
+      '<td style="font-size:12px;color:#e67700">' + (r.lateTime||'') + '</td>' +
+      '<td style="font-size:12px;color:#e67700">' + (r.earlyLeave||'') + '</td>' +
+      '<td style="font-size:12px">' + (r.leaveType||'') + '</td>' +
+      '<td style="font-size:12px">' + (r.tripDest||'') + '</td>' +
+      '<td style="font-size:12px;color:#829ab1">' + (r.remark||'') + '</td></tr>';
+  }).join('');
+}
+
+// ============================================
+// RECORD DETAIL MODAL
+// ============================================
+async function showRecordDetail(name, date) {
+  const rec = await db.mergedRecords.where('[name+date]').equals([name, date]).first();
+  if (!rec) return;
+  const rawPunches = await db.punchRaw.where('name').equals(name).filter(p => p.date === date).toArray();
+  const detail = await db.attendanceDetail.where('[name+date]').equals([name, date]).first();
+
+  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
+  html += '<div><span style="font-size:12px;color:#829ab1">姓名</span><div style="font-weight:600">' + rec.name + '</div></div>';
+  html += '<div><span style="font-size:12px;color:#829ab1">部门</span><div>' + rec.department + '</div></div>';
+  html += '<div><span style="font-size:12px;color:#829ab1">日期</span><div style="font-family:\'JetBrains Mono\'">' + rec.date + '</div></div>';
+  html += '<div><span style="font-size:12px;color:#829ab1">状态</span><div>' + rec.status + '</div></div>';
+  html += '<div><span style="font-size:12px;color:#829ab1">上午打卡</span><div style="font-family:\'JetBrains Mono\'">' + (rec.amPunch||'无记录') + '</div></div>';
+  html += '<div><span style="font-size:12px;color:#829ab1">下午打卡</span><div style="font-family:\'JetBrains Mono\'">' + (rec.pmPunch||'无记录') + '</div></div>';
+  html += '<div><span style="font-size:12px;color:#829ab1">签到</span><div style="font-family:\'JetBrains Mono\'">' + (rec.signIn||'无记录') + '</div></div>';
+  html += '<div><span style="font-size:12px;color:#829ab1">签退</span><div style="font-family:\'JetBrains Mono\'">' + (rec.signOut||'无记录') + '</div></div>';
+  if (rec.lateTime) html += '<div><span style="font-size:12px;color:#829ab1">迟到</span><div style="color:#e67700">' + rec.lateTime + '</div></div>';
+  if (rec.earlyLeave) html += '<div><span style="font-size:12px;color:#829ab1">早退</span><div style="color:#e67700">' + rec.earlyLeave + '</div></div>';
+  if (rec.leaveType) {
+    html += '<div><span style="font-size:12px;color:#829ab1">请假类型</span><div>' + rec.leaveType + '</div></div>';
+    html += '<div><span style="font-size:12px;color:#829ab1">请假事由</span><div>' + rec.leaveReason + '</div></div>';
+  }
+  if (rec.tripDest) {
+    html += '<div><span style="font-size:12px;color:#829ab1">出差目的地</span><div>' + rec.tripDest + '</div></div>';
+    html += '<div><span style="font-size:12px;color:#829ab1">出差类型</span><div>' + rec.tripType + '</div></div>';
+  }
+  html += '</div>';
+
+  if (rawPunches.length > 0) {
+    html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #f1f3f5"><h4 style="font-size:13px;font-weight:600;color:#486581;margin-bottom:8px">原始打卡记录</h4>';
+    html += '<table class="data-table"><thead><tr><th>时间</th><th>比对方式</th><th>机器号</th></tr></thead><tbody>';
+    rawPunches.forEach(p => {
+      html += '<tr><td style="font-family:\'JetBrains Mono\'">' + (p.datetime || p.time) + '</td><td>' + p.method + '</td><td>' + p.machineNum + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+  }
+
+  if (detail) {
+    html += '<div style="margin-top:16px;padding-top:16px;border-top:1px solid #f1f3f5"><h4 style="font-size:13px;font-weight:600;color:#486581;margin-bottom:8px">打卡机详细数据</h4>';
+    html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;font-size:12px">';
+    [['工作时间',detail.workHours],['出勤时间',detail.attendanceHours],['加班时间',detail.overtimeHours],['应到',detail.shouldAttend],['实到',detail.actualAttend],['时段',detail.shift]].forEach(function(pair) {
+      if(pair[1]) html += '<div><span style="color:#829ab1">' + pair[0] + '</span><div>' + pair[1] + '</div></div>';
+    });
+    html += '</div></div>';
+  }
+
+  openModal(name + ' \u00B7 ' + date + ' 考勤详情', html);
+}
+
+// ============================================
+// CALENDAR VIEW (Change #1: full page; Change #8: person nav)
+// ============================================
+async function loadCalendar() {
+  const records = await db.mergedRecords.toArray();
+  const depts = [...new Set(records.map(r => r.department).filter(Boolean))].sort();
+
+  // Default to last month with data
+  const latestData = await getLatestDataMonth();
+  if (latestData) {
+    calYear = latestData.year;
+    calMonth = latestData.month;
+  }
+
+  // Build initial person list from all records
+  const allNames = [...new Set(records.map(r => r.name).filter(Boolean))].sort();
+  calPersonList = allNames;
+  calPersonIndex = -1;
+
+  let filtersHtml = '<select id="calDept"><option value="">全部部门</option>' + depts.map(d=>'<option>'+d+'</option>').join('') + '</select>';
+  filtersHtml += '<select id="calName"><option value="">全部人员</option>' + allNames.map(n=>'<option>'+n+'</option>').join('') + '</select>';
+  document.getElementById('calFilters').innerHTML = filtersHtml;
+
+  document.getElementById('calDept').onchange = function() {
+    const dept = this.value;
+    // Update person list based on department filter
+    let filteredNames;
+    if (dept) {
+      filteredNames = [...new Set(records.filter(r => r.department === dept).map(r => r.name).filter(Boolean))].sort();
+    } else {
+      filteredNames = allNames;
+    }
+    calPersonList = filteredNames;
+    calPersonIndex = -1;
+    const calNameSel = document.getElementById('calName');
+    calNameSel.innerHTML = '<option value="">全部人员</option>' + filteredNames.map(n=>'<option>'+n+'</option>').join('');
+    calNameSel.value = '';
+    updatePersonNav();
+    renderCalendar(records);
+  };
+  document.getElementById('calName').onchange = function() {
+    const name = this.value;
+    if (name) {
+      calPersonIndex = calPersonList.indexOf(name);
+    } else {
+      calPersonIndex = -1;
+    }
+    updatePersonNav();
+    renderCalendar(records);
+  };
+
+  updatePersonNav();
+  renderCalendar(records);
+}
+
+function updatePersonNav() {
+  const nav = document.getElementById('personNav');
+  const indicator = document.getElementById('personIndicator');
+  if (calPersonIndex >= 0 && calPersonList.length > 0) {
+    nav.style.display = 'flex';
+    indicator.textContent = '\u7B2C ' + (calPersonIndex + 1) + ' / ' + calPersonList.length + ' \u4EBA \u00B7 ' + calPersonList[calPersonIndex];
+  } else if (calPersonList.length > 0) {
+    nav.style.display = 'flex';
+    indicator.textContent = '\u5171 ' + calPersonList.length + ' \u4EBA\uFF08\u672A\u9009\u62E9\u4E2A\u4EBA\uFF09';
+  } else {
+    nav.style.display = 'none';
+  }
+}
+
+function navigatePerson(delta) {
+  if (calPersonList.length === 0) return;
+  if (calPersonIndex < 0) {
+    calPersonIndex = delta > 0 ? 0 : calPersonList.length - 1;
+  } else {
+    calPersonIndex += delta;
+    if (calPersonIndex < 0) calPersonIndex = calPersonList.length - 1;
+    if (calPersonIndex >= calPersonList.length) calPersonIndex = 0;
+  }
+  const calNameSel = document.getElementById('calName');
+  if (calNameSel) calNameSel.value = calPersonList[calPersonIndex];
+  updatePersonNav();
+  // Re-render with cached records
+  renderCalendarFromDB();
+}
+
+async function renderCalendarFromDB() {
+  const records = await db.mergedRecords.toArray();
+  renderCalendar(records);
+}
+
+function renderCalendar(allRecords) {
+  const year = calYear;
+  const month = calMonth;
+  document.getElementById('calTitle').textContent = year + '\u5E74' + month + '\u6708';
+
+  const firstDay = new Date(year, month - 1, 1);
+  const lastDay = new Date(year, month, 0);
+  const startDow = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const monthPrefix = year + '-' + String(month).padStart(2,'0');
+  let records = allRecords.filter(r => r.date && r.date.startsWith(monthPrefix));
+
+  const dept = document.getElementById('calDept')?.value || '';
+  const name = calPersonIndex >= 0 ? calPersonList[calPersonIndex] : (document.getElementById('calName')?.value || '');
+  if (dept) records = records.filter(r => r.department === dept);
+  if (name) records = records.filter(r => r.name === name);
+
+  const byDate = {};
+  records.forEach(r => {
+    if (!byDate[r.date]) byDate[r.date] = [];
+    byDate[r.date].push(r);
+  });
+
+  let html = ['\u65E5','\u4E00','\u4E8C','\u4E09','\u56DB','\u4E94','\u516D'].map(d => '<div class="cal-header">' + d + '</div>').join('');
+
+  for (let i = 0; i < startDow; i++) html += '<div class="cal-day other-month"></div>';
+
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dateStr = year + '-' + String(month).padStart(2,'0') + '-' + String(d).padStart(2,'0');
+    const isToday = dateStr === today;
+    const dayRecords = byDate[dateStr] || [];
+    const isHoliday = cachedHolidayDates && cachedHolidayDates.has(dateStr);
+    const isRest = isRestDay(dateStr);
+
+    const statusCounts = {};
+    dayRecords.forEach(r => { statusCounts[r.status] = (statusCounts[r.status] || 0) + 1; });
+
+    let badges = '';
+    const badgeColors = { '正常':'background:#d3f9d8;color:#2b8a3e', '迟到':'background:#fff3bf;color:#e67700', '早退':'background:#fff3bf;color:#e67700', '旷工':'background:#ffe3e3;color:#c92a2a', '请假':'background:#d0ebff;color:#1864ab', '出差':'background:#d0ebff;color:#1864ab', '漏打卡':'background:#fff3bf;color:#e67700', '异常':'background:#ffe3e3;color:#c92a2a', '休息':'background:#f1f3f5;color:#868e96' };
+
+    // If this date is a configured holiday, only show the holiday description, not status badges
+    if (isHoliday) {
+      // Skip normal status badges for holidays - the holidayLabel below handles it
+    } else {
+      for (const [st, cnt] of Object.entries(statusCounts)) {
+        const c = badgeColors[st] || 'background:#f1f3f5;color:#868e96';
+        badges += '<span class="day-badge" style="' + c + '">' + (name ? st : st + cnt) + '</span>';
+      }
+    }
+
+    // Show holiday info
+    let holidayLabel = '';
+    if (isHoliday) {
+      const hi = cachedHolidayDates.get(dateStr);
+      holidayLabel = '<div style="font-size:9px;color:#e67700;margin-top:2px">' + (hi.description || hi.type) + '</div>';
+    }
+
+    let extraClass = '';
+    if (isRest && !isToday) extraClass = ' rest-day';
+    if (isHoliday && !isToday) extraClass = ' holiday';
+
+    html += '<div class="cal-day' + (isToday?' today':'') + extraClass + '" onclick="showDayDetail(\'' + dateStr + '\')">' +
+      '<div class="day-num">' + d + '</div>' +
+      holidayLabel +
+      '<div class="day-badges">' + badges + '</div></div>';
+  }
+
+  document.getElementById('calGrid').innerHTML = html;
+}
+
+async function showDayDetail(date) {
+  const dept = document.getElementById('calDept')?.value || '';
+  const name = calPersonIndex >= 0 ? calPersonList[calPersonIndex] : (document.getElementById('calName')?.value || '');
+  let records = await db.mergedRecords.filter(r => r.date === date).toArray();
+  if (dept) records = records.filter(r => r.department === dept);
+  if (name) records = records.filter(r => r.name === name);
+
+  if (records.length === 0) {
+    let info = '\u5F53\u65E5\u65E0\u8003\u52E4\u8BB0\u5F55';
+    if (cachedHolidayDates && cachedHolidayDates.has(date)) {
+      const hi = cachedHolidayDates.get(date);
+      info += '<br><span class="badge badge-yellow" style="margin-top:8px">' + hi.type + (hi.description ? ' - ' + hi.description : '') + '</span>';
+    }
+    openModal(date, '<div class="text-sm text-gray-400">' + info + '</div>');
+    return;
+  }
+
+  const statusBadge = s => {
+    const m = { '正常':'badge-green','迟到':'badge-yellow','早退':'badge-yellow','旷工':'badge-red','请假':'badge-blue','出差':'badge-blue','漏打卡':'badge-yellow','异常':'badge-red','休息':'badge-gray' };
+    return '<span class="badge ' + (m[s]||'badge-gray') + '">' + s + '</span>';
+  };
+
+  let html = '<table class="data-table"><thead><tr><th>姓名</th><th>部门</th><th>上午</th><th>下午</th><th>状态</th><th>备注</th></tr></thead><tbody>';
+  records.forEach(r => {
+    html += '<tr onclick="showRecordDetail(\'' + r.name + "','" + r.date + '\')" style="cursor:pointer">' +
+      '<td style="font-weight:500">' + r.name + '</td><td style="font-size:12px;color:#627d98">' + r.department + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\';font-size:12px">' + (r.amPunch||'-') + '</td>' +
+      '<td style="font-family:\'JetBrains Mono\';font-size:12px">' + (r.pmPunch||'-') + '</td>' +
+      '<td>' + statusBadge(r.status) + '</td><td style="font-size:12px;color:#829ab1">' + (r.remark||'') + '</td></tr>';
+  });
+  html += '</tbody></table>';
+  openModal(date + ' \u8003\u52E4\u8BE6\u60C5 (' + records.length + '\u4EBA)', html);
+}
+
+// ============================================
+// EXPORT CENTER (Change #5: template preview + sample download)
+// ============================================
+async function loadExportPage() {
+  document.getElementById('placeholderList').innerHTML = PLACEHOLDERS.map(p =>
+    '<code style="background:#f1f3f5;padding:2px 8px;border-radius:4px;font-size:12px;color:#486581;font-family:\'JetBrains Mono\'">{{' + p + '}}</code>'
+  ).join('');
+
+  const templates = await db.exportTemplates.toArray();
+  const el = document.getElementById('templateList');
+  if (templates.length === 0) {
+    el.innerHTML = '<div class="text-sm text-gray-400">暂无模板，请上传导出模板</div>';
+  } else {
+    el.innerHTML = templates.map(t =>
+      '<div class="template-card">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+          '<h4 style="font-size:14px;font-weight:600;color:#243b53">' + t.name + '</h4>' +
+          '<button class="btn btn-outline btn-sm" onclick="deleteTemplate(' + t.id + ')" style="color:#e03131;padding:3px 8px;font-size:11px">删除</button>' +
+        '</div>' +
+        '<div style="font-size:12px;color:#829ab1">' + new Date(t.createdAt).toLocaleString('zh-CN') + '</div>' +
+      '</div>'
+    ).join('');
+  }
+
+  const sel = document.getElementById('exportTemplateSelect');
+  sel.innerHTML = '<option value="">-- \u8BF7\u9009\u62E9\u5BFC\u51FA\u6A21\u677F --</option>' + templates.map(t => '<option value="' + t.id + '">' + t.name + '</option>').join('');
+
+  const now = new Date();
+  document.getElementById('exportMonth').value = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+
+  const records = await db.mergedRecords.toArray();
+  const depts = [...new Set(records.map(r=>r.department).filter(Boolean))].sort();
+  document.getElementById('exportDeptFilter').innerHTML = '<option value="">全部部门</option>' + depts.map(d=>'<option>'+d+'</option>').join('');
+}
+
+function downloadSampleTemplate() {
+  const wb = XLSX.utils.book_new();
+  const data = [
+    ['姓名','部门','日期','签到时间','签退时间','请假时长','出差类型'],
+    ['{{姓名}}','{{部门}}','{{日期}}','{{签到时间}}','{{签退时间}}','{{请假时长}}','{{出差类型}}']
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [{wch:10},{wch:10},{wch:12},{wch:12},{wch:12},{wch:10},{wch:10}];
+  XLSX.utils.book_append_sheet(wb, ws, '\u6A21\u677F');
+  XLSX.writeFile(wb, '\u8003\u52E4\u5BFC\u51FA\u6A21\u677F_\u793A\u4F8B.xlsx');
+  toast('\u793A\u4F8B\u6A21\u677F\u5DF2\u4E0B\u8F7D');
+}
+
+async function handleTemplateUpload(file) {
+  const data = await file.arrayBuffer();
+  const name = file.name.replace(/\.(xlsx|xls)$/i, '');
+  const uint8 = new Uint8Array(data);
+  let binary = '';
+  uint8.forEach(b => binary += String.fromCharCode(b));
+  const base64 = btoa(binary);
+  await db.exportTemplates.add({ name, data: base64, createdAt: Date.now() });
+  toast('\u6A21\u677F "' + name + '" \u5DF2\u4FDD\u5B58');
+  loadExportPage();
+}
+
+async function deleteTemplate(id) {
+  await db.exportTemplates.delete(id);
+  toast('\u6A21\u677F\u5DF2\u5220\u9664');
+  loadExportPage();
+}
+
+async function doExport() {
+  const templateId = parseInt(document.getElementById('exportTemplateSelect').value);
+  const monthVal = document.getElementById('exportMonth').value;
+  const deptFilter = document.getElementById('exportDeptFilter').value;
+
+  if (!templateId) { toast('\u8BF7\u9009\u62E9\u5BFC\u51FA\u6A21\u677F', 'error'); return; }
+  if (!monthVal) { toast('\u8BF7\u9009\u62E9\u5BFC\u51FA\u6708\u4EFD', 'error'); return; }
+
+  const template = await db.exportTemplates.get(templateId);
+  if (!template) { toast('\u6A21\u677F\u4E0D\u5B58\u5728', 'error'); return; }
+
+  let records = await db.mergedRecords.filter(r => r.date && r.date.startsWith(monthVal)).toArray();
+  if (deptFilter) records = records.filter(r => r.department === deptFilter);
+  records.sort((a, b) => a.name.localeCompare(b.name) || a.date.localeCompare(b.date));
+
+  if (records.length === 0) { toast('\u8BE5\u6708\u4EFD\u65E0\u8003\u52E4\u6570\u636E', 'error'); return; }
+
+  const binary = atob(template.data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  const wb = XLSX.read(bytes, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+  const placeholderMap = {};
+  for (let R = range.s.r; R <= range.e.r; R++) {
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      const cell = ws[addr];
+      if (cell && typeof cell.v === 'string') {
+        const m = cell.v.match(/\{\{(.+?)\}\}/);
+        if (m) {
+          placeholderMap[addr] = { row: R, col: C, field: m[1].trim(), template: cell.v };
+        }
+      }
+    }
+  }
+
+  if (Object.keys(placeholderMap).length === 0) {
+    toast('\u6A21\u677F\u4E2D\u672A\u627E\u5230\u5360\u4F4D\u7B26 {{字段名}}', 'error');
+    return;
+  }
+
+  const templateRow = Math.min(...Object.values(placeholderMap).map(p => p.row));
+
+  const fieldMap = {
+    '姓名': r => r.name, '部门': r => r.department, '日期': r => r.date,
+    '签到时间': r => r.signIn, '签退时间': r => r.signOut,
+    '上午打卡': r => r.amPunch, '下午打卡': r => r.pmPunch,
+    '状态': r => r.status, '迟到时间': r => r.lateTime, '早退时间': r => r.earlyLeave,
+    '是否旷工': r => r.isAbsent ? '\u662F' : '', '工作时间': r => r.workHours,
+    '加班时间': r => r.overtimeHours, '出勤时间': r => r.attendanceHours,
+    '请假类型': r => r.leaveType, '请假时长': r => r.leaveHours,
+    '请假事由': r => r.leaveReason, '加班内容': r => r.otContent,
+    '加班时长': r => r.otHours, '出差目的地': r => r.tripDest,
+    '出差类型': r => r.tripType, '出差事由': r => r.tripReason,
+    '备注': r => r.remark, '考勤号码': r => '',
+    '应到': r => r.shouldAttend, '实到': r => r.actualAttend
+  };
+
+  const outWb = XLSX.utils.book_new();
+  const outData = [];
+
+  for (let R = range.s.r; R < templateRow; R++) {
+    const row = [];
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: R, c: C });
+      row.push(ws[addr] ? ws[addr].v : '');
+    }
+    outData.push(row);
+  }
+
+  records.forEach(rec => {
+    const row = [];
+    for (let C = range.s.c; C <= range.e.c; C++) {
+      const addr = XLSX.utils.encode_cell({ r: templateRow, c: C });
+      const ph = placeholderMap[addr];
+      if (ph) {
+        const fn = fieldMap[ph.field];
+        row.push(fn ? fn(rec) : '');
+      } else {
+        const cell = ws[addr];
+        row.push(cell ? cell.v : '');
+      }
+    }
+    outData.push(row);
+  });
+
+  const outWs = XLSX.utils.aoa_to_sheet(outData);
+  XLSX.utils.book_append_sheet(outWb, outWs, '\u8003\u52E4\u6570\u636E');
+  XLSX.writeFile(outWb, '\u8003\u52E4\u6570\u636E_' + monthVal + '.xlsx');
+  toast('\u5BFC\u51FA\u6210\u529F\uFF01');
+}
+
+// ============================================
+// ATTENDANCE SETTINGS (Change #6)
+// ============================================
+async function loadAttendanceSettingsPage() {
+  const s = await loadSettings();
+  document.getElementById('setWorkStart').value = s.workStart;
+  document.getElementById('setWorkEnd').value = s.workEnd;
+  document.getElementById('setPunchCount').value = s.punchCount;
+  document.getElementById('setLateTolerance').value = s.lateTolerance;
+  loadHolidayList();
+}
+
+async function saveSettings() {
+  await db.settings.put({ key: 'workStart', value: document.getElementById('setWorkStart').value });
+  await db.settings.put({ key: 'workEnd', value: document.getElementById('setWorkEnd').value });
+  await db.settings.put({ key: 'punchCount', value: document.getElementById('setPunchCount').value });
+  await db.settings.put({ key: 'lateTolerance', value: document.getElementById('setLateTolerance').value });
+  toast('\u8BBE\u7F6E\u5DF2\u4FDD\u5B58');
+}
+
+async function addHoliday() {
+  const date = document.getElementById('holidayDate').value;
+  const type = document.getElementById('holidayType').value;
+  const desc = document.getElementById('holidayDesc').value.trim();
+  if (!date) { toast('\u8BF7\u9009\u62E9\u65E5\u671F', 'error'); return; }
+  await db.holidays.where('date').equals(date).delete();
+  await db.holidays.add({ date, type, description: desc });
+  await loadHolidayCache();
+  document.getElementById('holidayDate').value = '';
+  document.getElementById('holidayDesc').value = '';
+  toast('\u5DF2\u6DFB\u52A0 ' + date + ' \u4E3A' + type);
+  loadHolidayList();
+}
+
+async function addHolidayRange() {
+  const start = document.getElementById('holidayRangeStart').value;
+  const end = document.getElementById('holidayRangeEnd').value;
+  const type = document.getElementById('holidayRangeType').value;
+  const desc = document.getElementById('holidayRangeDesc').value.trim();
+  if (!start || !end) { toast('\u8BF7\u9009\u62E9\u65E5\u671F\u8303\u56F4', 'error'); return; }
+  if (start > end) { toast('\u5F00\u59CB\u65E5\u671F\u4E0D\u80FD\u665A\u4E8E\u7ED3\u675F\u65E5\u671F', 'error'); return; }
+  let count = 0;
+  for (let d = new Date(start); d <= new Date(end); d.setDate(d.getDate() + 1)) {
+    const dateStr = d.toISOString().slice(0, 10);
+    await db.holidays.where('date').equals(dateStr).delete();
+    await db.holidays.add({ date: dateStr, type, description: desc });
+    count++;
+  }
+  await loadHolidayCache();
+  document.getElementById('holidayRangeStart').value = '';
+  document.getElementById('holidayRangeEnd').value = '';
+  document.getElementById('holidayRangeDesc').value = '';
+  toast('\u5DF2\u6DFB\u52A0 ' + count + ' \u4E2A' + type + '\u65E5');
+  loadHolidayList();
+}
+
+async function removeHoliday(id) {
+  await db.holidays.delete(id);
+  await loadHolidayCache();
+  loadHolidayList();
+}
+
+async function loadHolidayList() {
+  const holidays = await db.holidays.toArray();
+  const el = document.getElementById('holidayList');
+  if (holidays.length === 0) {
+    el.innerHTML = '<span style="color:#9fb3c8;font-size:12px">\u6682\u65E0\u5047\u65E5\u6570\u636E\uFF0C\u5C06\u4F7F\u7528\u5468\u672B\u4F5C\u4E3A\u4F11\u606F\u65E5</span>';
+    return;
+  }
+  holidays.sort((a,b) => a.date.localeCompare(b.date));
+  el.innerHTML = holidays.map(h =>
+    '<span class="holiday-tag">' +
+      '<span style="font-family:\'JetBrains Mono\';font-size:11px">' + h.date + '</span> ' +
+      h.type + (h.description ? '(' + h.description + ')' : '') +
+      '<span class="remove-holiday" onclick="removeHoliday(' + h.id + ')">\u00D7</span>' +
+    '</span>'
+  ).join('');
+}
+
+// ============================================
+// INITIALIZATION
+// ============================================
+document.addEventListener('DOMContentLoaded', async () => {
+  await initAuth();
+  await loadHolidayCache();
+
+  // Login
+  document.getElementById('loginBtn').onclick = doLogin;
+  document.getElementById('loginPass').addEventListener('keydown', e => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('logoutBtn').onclick = doLogout;
+
+  // Navigation
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.onclick = () => navigateTo(item.dataset.page);
+  });
+
+  // File upload with auto-detection (Change #7)
+  const uploadZone = document.getElementById('uploadZone');
+  const fileInput = document.getElementById('fileInput');
+  uploadZone.onclick = () => {
+    // Allow upload even without pre-selected type (auto-detect will try)
+    fileInput.click();
+  };
+  uploadZone.ondragover = e => { e.preventDefault(); uploadZone.classList.add('drag-over'); };
+  uploadZone.ondragleave = () => uploadZone.classList.remove('drag-over');
+  uploadZone.ondrop = e => {
+    e.preventDefault(); uploadZone.classList.remove('drag-over');
+    Array.from(e.dataTransfer.files).forEach(f => handleFileUpload(f));
+  };
+  fileInput.onchange = () => { Array.from(fileInput.files).forEach(f => handleFileUpload(f)); fileInput.value=''; };
+
+  // Template upload
+  const tplZone = document.getElementById('templateUploadZone');
+  const tplInput = document.getElementById('templateInput');
+  tplZone.onclick = () => tplInput.click();
+  tplZone.ondragover = e => { e.preventDefault(); tplZone.classList.add('drag-over'); };
+  tplZone.ondragleave = () => tplZone.classList.remove('drag-over');
+  tplZone.ondrop = e => {
+    e.preventDefault(); tplZone.classList.remove('drag-over');
+    Array.from(e.dataTransfer.files).forEach(f => handleTemplateUpload(f));
+  };
+  tplInput.onchange = () => { Array.from(tplInput.files).forEach(f => handleTemplateUpload(f)); tplInput.value=''; };
+
+  // Export tabs
+  document.querySelectorAll('.tab-item').forEach(tab => {
+    tab.onclick = () => {
+      document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('tab-templates').style.display = tab.dataset.tab === 'templates' ? 'block' : 'none';
+      document.getElementById('tab-doexport').style.display = tab.dataset.tab === 'doexport' ? 'block' : 'none';
+    };
+  });
+
+  // Export button
+  document.getElementById('doExportBtn').onclick = doExport;
+
+  // Sample template download (Change #5)
+  document.getElementById('downloadSampleBtn').onclick = downloadSampleTemplate;
+
+  // Calendar nav
+  document.getElementById('calPrev').onclick = () => { calMonth--; if(calMonth<1){calMonth=12;calYear--;} renderCalendarFromDB(); };
+  document.getElementById('calNext').onclick = () => { calMonth++; if(calMonth>12){calMonth=1;calYear++;} renderCalendarFromDB(); };
+
+  // Person navigation (Change #8)
+  document.getElementById('prevPerson').onclick = () => navigatePerson(-1);
+  document.getElementById('nextPerson').onclick = () => navigatePerson(1);
+
+  // Attendance settings (Change #6)
+  document.getElementById('saveSettingsBtn').onclick = saveSettings;
+  document.getElementById('addHolidayBtn').onclick = addHoliday;
+  document.getElementById('addHolidayRangeBtn').onclick = addHolidayRange;
+
+  // Holiday Excel import
+  const holidayZone = document.getElementById('holidayUploadZone');
+  const holidayInput = document.getElementById('holidayFileInput');
+  holidayZone.onclick = () => holidayInput.click();
+  holidayZone.ondragover = e => { e.preventDefault(); holidayZone.classList.add('drag-over'); };
+  holidayZone.ondragleave = () => holidayZone.classList.remove('drag-over');
+  holidayZone.ondrop = e => {
+    e.preventDefault(); holidayZone.classList.remove('drag-over');
+    Array.from(e.dataTransfer.files).forEach(f => importHolidayExcel(f));
+  };
+  holidayInput.onchange = () => { Array.from(holidayInput.files).forEach(f => importHolidayExcel(f)); holidayInput.value=''; };
+
+  // System settings - Clear data
+  document.getElementById('clearDataBtn').onclick = async () => {
+    if(!confirm('\u786E\u5B9A\u8981\u6E05\u7A7A\u6240\u6709\u6570\u636E\u5417\uFF1F\u6B64\u64CD\u4F5C\u4E0D\u53EF\u6062\u590D\u3002')) return;
+    await Promise.all([db.punchRaw.clear(),db.attendanceDetail.clear(),db.leaveApps.clear(),db.overtimeApps.clear(),db.tripApps.clear(),db.mergedRecords.clear(),db.importHistory.clear(),db.holidays.clear()]);
+    cachedHolidayDates = new Map();
+    toast('\u6240\u6709\u6570\u636E\u5DF2\u6E05\u7A7A');
+    loadDashboard();
+  };
+
+  // Rebuild
+  document.getElementById('rebuildBtn').onclick = async () => {
+    showLoading('\u91CD\u65B0\u5408\u5E76\u6570\u636E...');
+    await mergeAllData();
+    hideLoading();
+    toast('\u6570\u636E\u91CD\u65B0\u5408\u5E76\u5B8C\u6210');
+  };
+
+  // Modal close on overlay click
+  document.getElementById('detailModal').onclick = e => { if(e.target.id==='detailModal') closeModal(); };
+
+  // Set initial calendar to last month with data, or current month
+  const latestInit = await getLatestDataMonth();
+  if (latestInit) {
+    calYear = latestInit.year;
+    calMonth = latestInit.month;
+  } else {
+    const now = new Date();
+    calYear = now.getFullYear();
+    calMonth = now.getMonth() + 1;
+  }
+});
+</script>
+</body>
+</html>
